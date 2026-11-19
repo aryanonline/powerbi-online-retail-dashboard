@@ -1,0 +1,23 @@
+-- Paste each of these in Power BI Desktop: Modeling > New table.
+-- Then: select the Date table > Table tools > Mark as date table > Date column = Date.
+-- Select Date[Month Start] > Column tools > Format > custom "mmm yyyy".
+
+Date =
+VAR FirstDataDate = MIN ( 'Invoice Lines'[Date] )
+VAR LastDataDate = MAX ( 'Invoice Lines'[Date] )
+RETURN
+    ADDCOLUMNS (
+        CALENDAR ( DATE ( YEAR ( FirstDataDate ), MONTH ( FirstDataDate ), 1 ), EOMONTH ( LastDataDate, 0 ) ),
+        "Year", YEAR ( [Date] ),
+        "Month Start", DATE ( YEAR ( [Date] ), MONTH ( [Date] ), 1 ),
+        "Month Number", MONTH ( [Date] ),
+        "Quarter", "Q" & QUARTER ( [Date] ),
+        "Weekday", FORMAT ( [Date], "ddd" ),
+        "Weekday Number", WEEKDAY ( [Date], 2 ),
+        "Has Data", [Date] <= LastDataDate,
+        "Is Complete Month", EOMONTH ( [Date], 0 ) <= LastDataDate
+    )
+
+
+-- Disconnected table for the cohort retention matrix columns (months since first purchase).
+Month Offset = SELECTCOLUMNS ( GENERATESERIES ( 0, 24, 1 ), "Offset", [Value] )

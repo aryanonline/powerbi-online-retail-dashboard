@@ -1,0 +1,8 @@
+# Power BI Project local files
+**/.pbi/localSettings.json
+**/.pbi/cache.abf
+
+# Data stays out of the repo: download it from UCI (see docs/build-steps.md)
+data/
+*.csv
+*.xlsx

@@ -1,0 +1,294 @@
+createOrReplace
+
+	ref table 'Invoice Lines'
+
+		/// Net revenue: product sales minus cancelled product lines. Postage, fees, adjustments and zero-price lines are excluded.
+		measure 'Revenue' = [Gross Sales] - [Returns Value]
+			formatString: £#,0
+			displayFolder: 1 Sales
+
+		/// Value of product sale lines before cancellations.
+		measure 'Gross Sales' = CALCULATE ( SUM ( 'Invoice Lines'[Line Amount] ), KEEPFILTERS ( 'Invoice Lines'[Line Type] = "Sale" ) )
+			formatString: £#,0
+			displayFolder: 1 Sales
+
+		/// Value of cancelled product lines (invoice numbers starting with C), shown as a positive number.
+		measure 'Returns Value' = CALCULATE ( - SUM ( 'Invoice Lines'[Line Amount] ), KEEPFILTERS ( 'Invoice Lines'[Line Type] = "Return" ) )
+			formatString: £#,0
+			displayFolder: 1 Sales
+
+		measure 'Return Rate' = DIVIDE ( [Returns Value], [Gross Sales] )
+			formatString: 0.0%
+			displayFolder: 1 Sales
+
+		/// Units sold minus units cancelled.
+		measure 'Units Sold' = CALCULATE ( SUM ( 'Invoice Lines'[Quantity] ), KEEPFILTERS ( 'Invoice Lines'[Line Type] IN { "Sale", "Return" } ) )
+			formatString: #,0
+			displayFolder: 1 Sales
+
+		/// Number of invoices with at least one product sale line.
+		measure 'Orders' = CALCULATE ( DISTINCTCOUNT ( 'Invoice Lines'[Invoice] ), KEEPFILTERS ( 'Invoice Lines'[Line Type] = "Sale" ) )
+			formatString: #,0
+			displayFolder: 1 Sales
+
+		measure 'Average Order Value' = DIVIDE ( [Revenue], [Orders] )
+			formatString: £#,0.00
+			displayFolder: 1 Sales
+
+		measure 'First Data Date' = CALCULATE ( MIN ( 'Invoice Lines'[Date] ), REMOVEFILTERS () )
+			formatString: d mmm yyyy
+			displayFolder: 2 Prior year
+
+		/// Last day in the data (9 Dec 2011). Used to keep year-on-year comparisons like for like.
+		measure 'Last Data Date' = CALCULATE ( MAX ( 'Invoice Lines'[Date] ), REMOVEFILTERS () )
+			formatString: d mmm yyyy
+			displayFolder: 2 Prior year
+
+		/// Revenue for the same dates one year earlier, trimmed to dates that have data. Blank when the prior year is not fully covered by the data.
+		measure 'Revenue PY' =
+				VAR FirstDataDate = [First Data Date]
+				VAR LastDataDate = [Last Data Date]
+				VAR DatesWithData = FILTER ( VALUES ( 'Date'[Date] ), 'Date'[Date] <= LastDataDate )
+				VAR PriorDates = SAMEPERIODLASTYEAR ( DatesWithData )
+				RETURN
+				    IF (
+				        MINX ( PriorDates, 'Date'[Date] ) >= FirstDataDate,
+				        CALCULATE ( [Revenue], PriorDates )
+				    )
+			formatString: £#,0
+			displayFolder: 2 Prior year
+
+		measure 'Revenue YoY %' =
+				VAR CurrentValue = [Revenue]
+				VAR PriorValue = [Revenue PY]
+				RETURN
+				    IF ( NOT ISBLANK ( CurrentValue ) && NOT ISBLANK ( PriorValue ), DIVIDE ( CurrentValue - PriorValue, PriorValue ) )
+			formatString: +0.0%;-0.0%;0.0%
+			displayFolder: 2 Prior year
+
+		/// Orders for the same dates one year earlier, trimmed to dates that have data. Blank when the prior year is not fully covered by the data.
+		measure 'Orders PY' =
+				VAR FirstDataDate = [First Data Date]
+				VAR LastDataDate = [Last Data Date]
+				VAR DatesWithData = FILTER ( VALUES ( 'Date'[Date] ), 'Date'[Date] <= LastDataDate )
+				VAR PriorDates = SAMEPERIODLASTYEAR ( DatesWithData )
+				RETURN
+				    IF (
+				        MINX ( PriorDates, 'Date'[Date] ) >= FirstDataDate,
+				        CALCULATE ( [Orders], PriorDates )
+				    )
+			formatString: #,0
+			displayFolder: 2 Prior year
+
+		measure 'Orders YoY %' =
+				VAR CurrentValue = [Orders]
+				VAR PriorValue = [Orders PY]
+				RETURN
+				    IF ( NOT ISBLANK ( CurrentValue ) && NOT ISBLANK ( PriorValue ), DIVIDE ( CurrentValue - PriorValue, PriorValue ) )
+			formatString: +0.0%;-0.0%;0.0%
+			displayFolder: 2 Prior year
+
+		/// Active Customers for the same dates one year earlier, trimmed to dates that have data. Blank when the prior year is not fully covered by the data.
+		measure 'Active Customers PY' =
+				VAR FirstDataDate = [First Data Date]
+				VAR LastDataDate = [Last Data Date]
+				VAR DatesWithData = FILTER ( VALUES ( 'Date'[Date] ), 'Date'[Date] <= LastDataDate )
+				VAR PriorDates = SAMEPERIODLASTYEAR ( DatesWithData )
+				RETURN
+				    IF (
+				        MINX ( PriorDates, 'Date'[Date] ) >= FirstDataDate,
+				        CALCULATE ( [Active Customers], PriorDates )
+				    )
+			formatString: #,0
+			displayFolder: 2 Prior year
+
+		measure 'Active Customers YoY %' =
+				VAR CurrentValue = [Active Customers]
+				VAR PriorValue = [Active Customers PY]
+				RETURN
+				    IF ( NOT ISBLANK ( CurrentValue ) && NOT ISBLANK ( PriorValue ), DIVIDE ( CurrentValue - PriorValue, PriorValue ) )
+			formatString: +0.0%;-0.0%;0.0%
+			displayFolder: 2 Prior year
+
+		measure 'Average Order Value PY' = DIVIDE ( [Revenue PY], [Orders PY] )
+			formatString: £#,0.00
+			displayFolder: 2 Prior year
+
+		measure 'Average Order Value YoY %' =
+				VAR CurrentValue = [Average Order Value]
+				VAR PriorValue = [Average Order Value PY]
+				RETURN
+				    IF ( NOT ISBLANK ( CurrentValue ) && NOT ISBLANK ( PriorValue ), DIVIDE ( CurrentValue - PriorValue, PriorValue ) )
+			formatString: +0.0%;-0.0%;0.0%
+			displayFolder: 2 Prior year
+
+		/// Customers with at least one product sale in the period. Guest orders are excluded.
+		measure 'Active Customers' =
+				CALCULATE (
+				    DISTINCTCOUNT ( 'Invoice Lines'[Customer Key] ),
+				    KEEPFILTERS ( 'Invoice Lines'[Line Type] = "Sale" ),
+				    KEEPFILTERS ( 'Invoice Lines'[Customer Key] <> -1 )
+				)
+			formatString: #,0
+			displayFolder: 3 Customers
+
+		/// Active customers whose first purchase falls in the period. December 2009 counts everyone as new because the data starts there.
+		measure 'New Customers' =
+				VAR PeriodStart = MIN ( 'Date'[Date] )
+				VAR PeriodEnd = MAX ( 'Date'[Date] )
+				VAR ActiveInPeriod =
+				    CALCULATETABLE (
+				        VALUES ( 'Invoice Lines'[Customer Key] ),
+				        KEEPFILTERS ( 'Invoice Lines'[Line Type] = "Sale" ),
+				        KEEPFILTERS ( 'Invoice Lines'[Customer Key] <> -1 )
+				    )
+				RETURN
+				    CALCULATE (
+				        COUNTROWS ( Customer ),
+				        TREATAS ( ActiveInPeriod, Customer[Customer Key] ),
+				        KEEPFILTERS ( Customer[First Purchase] >= PeriodStart && Customer[First Purchase] <= PeriodEnd )
+				    )
+			formatString: #,0
+			displayFolder: 3 Customers
+
+		measure 'Returning Customers' = [Active Customers] - [New Customers]
+			formatString: #,0
+			displayFolder: 3 Customers
+
+		/// Customers in the Customer table, excluding the Guest row. Not affected by date filters.
+		measure 'Customers' = CALCULATE ( COUNTROWS ( Customer ), KEEPFILTERS ( Customer[Customer Key] <> -1 ) )
+			formatString: #,0
+			displayFolder: 3 Customers
+
+		/// Share of buying customers with two or more orders over the whole data period.
+		measure 'Repeat Customer Rate' =
+				DIVIDE (
+				    CALCULATE ( [Customers], KEEPFILTERS ( Customer[Orders] >= 2 ) ),
+				    CALCULATE ( [Customers], KEEPFILTERS ( Customer[Orders] >= 1 ) )
+				)
+			formatString: 0.0%
+			displayFolder: 3 Customers
+
+		/// Share of the revenue shown in the visual, so a segment table adds up to 100%.
+		measure 'Customer Revenue Share' = DIVIDE ( [Revenue], CALCULATE ( [Revenue], ALLSELECTED ( Customer ) ) )
+			formatString: 0.0%
+			displayFolder: 3 Customers
+
+		/// Customers whose first purchase was in the cohort month.
+		measure 'Cohort Size' =
+				VAR CohortStart = SELECTEDVALUE ( Customer[Cohort Month] )
+				VAR CohortEnd = EOMONTH ( CohortStart, 0 )
+				RETURN
+				    IF (
+				        NOT ISBLANK ( CohortStart ),
+				        CALCULATE (
+				            [Active Customers],
+				            REMOVEFILTERS ( 'Date' ),
+				            'Date'[Date] >= CohortStart && 'Date'[Date] <= CohortEnd
+				        )
+				    )
+			formatString: #,0
+			displayFolder: 3 Customers
+
+		/// Share of a cohort that bought again N months after their first purchase month. Only complete months are shown.
+		measure 'Retention %' =
+				VAR Offset = SELECTEDVALUE ( 'Month Offset'[Offset] )
+				VAR CohortStart = SELECTEDVALUE ( Customer[Cohort Month] )
+				RETURN
+				    IF (
+				        NOT ISBLANK ( Offset ) && NOT ISBLANK ( CohortStart ),
+				        VAR TargetStart = EDATE ( CohortStart, Offset )
+				        VAR TargetEnd = EOMONTH ( TargetStart, 0 )
+				        VAR Retained =
+				            CALCULATE (
+				                [Active Customers],
+				                REMOVEFILTERS ( 'Date' ),
+				                'Date'[Date] >= TargetStart && 'Date'[Date] <= TargetEnd
+				            )
+				        RETURN
+				            IF ( TargetEnd <= [Last Data Date], DIVIDE ( COALESCE ( Retained, 0 ), [Cohort Size] ) )
+				    )
+			formatString: 0.0%
+			displayFolder: 3 Customers
+
+		measure 'Products Sold' = CALCULATE ( DISTINCTCOUNT ( 'Invoice Lines'[StockCode] ), KEEPFILTERS ( 'Invoice Lines'[Line Type] = "Sale" ) )
+			formatString: #,0
+			displayFolder: 4 Products
+
+		measure 'Product Revenue Share' = DIVIDE ( [Revenue], CALCULATE ( [Revenue], ALLSELECTED ( 'Product' ) ) )
+			formatString: 0.0%
+			displayFolder: 4 Products
+
+		/// Share of revenue from this product and every product that sells more. Use with StockCode on rows.
+		measure 'Cumulative Revenue %' =
+				VAR CurrentRevenue = [Revenue]
+				VAR ProductRevenue =
+				    FILTER ( ADDCOLUMNS ( ALLSELECTED ( 'Product'[StockCode] ), "@Revenue", [Revenue] ), [@Revenue] > 0 )
+				VAR TotalRevenue = SUMX ( ProductRevenue, [@Revenue] )
+				VAR UpToCurrent = SUMX ( FILTER ( ProductRevenue, [@Revenue] >= CurrentRevenue ), [@Revenue] )
+				RETURN
+				    IF ( ISINSCOPE ( 'Product'[StockCode] ) && CurrentRevenue > 0, DIVIDE ( UpToCurrent, TotalRevenue ) )
+			formatString: 0.0%
+			displayFolder: 4 Products
+
+		/// How many of the best-selling products it takes to reach 80% of revenue.
+		measure 'Products Making 80% of Revenue' =
+				VAR ProductRevenue =
+				    FILTER ( ADDCOLUMNS ( ALLSELECTED ( 'Product'[StockCode] ), "@Revenue", [Revenue] ), [@Revenue] > 0 )
+				VAR TotalRevenue = SUMX ( ProductRevenue, [@Revenue] )
+				VAR WithCumulative =
+				    ADDCOLUMNS (
+				        ProductRevenue,
+				        "@Cumulative",
+				            VAR ThisRevenue = [@Revenue]
+				            RETURN SUMX ( FILTER ( ProductRevenue, [@Revenue] >= ThisRevenue ), [@Revenue] )
+				    )
+				RETURN
+				    COUNTROWS ( FILTER ( WithCumulative, [@Cumulative] <= 0.8 * TotalRevenue ) )
+			formatString: #,0
+			displayFolder: 4 Products
+
+		measure 'Share of Products Making 80%' =
+				VAR ProductsWithRevenue = COUNTROWS ( FILTER ( ALLSELECTED ( 'Product'[StockCode] ), [Revenue] > 0 ) )
+				RETURN
+				    DIVIDE ( [Products Making 80% of Revenue], ProductsWithRevenue )
+			formatString: 0.0%
+			displayFolder: 4 Products
+
+		measure 'Rows' = COUNTROWS ( 'Invoice Lines' )
+			formatString: #,0
+			displayFolder: 5 Data quality
+
+		/// Raw quantity times price for any line type. Use it to size the non-product and adjustment lines.
+		measure 'Line Amount' = SUM ( 'Invoice Lines'[Line Amount] )
+			formatString: £#,0
+			displayFolder: 5 Data quality
+
+		/// Share of revenue from orders with no customer ID.
+		measure 'Guest Revenue Share' = DIVIDE ( CALCULATE ( [Revenue], KEEPFILTERS ( 'Invoice Lines'[Customer Key] = -1 ) ), [Revenue] )
+			formatString: 0.0%
+			displayFolder: 5 Data quality
+
+	ref table Product
+
+		/// Rank of the product by all-time net revenue (1 = best seller). X axis of the Pareto curve.
+		column 'Revenue Rank' =
+				IF (
+				    'Product'[Lifetime Revenue] > 0,
+				    RANKX ( FILTER ( 'Product', 'Product'[Lifetime Revenue] > 0 ), 'Product'[Lifetime Revenue], , DESC, DENSE )
+				)
+			dataType: int64
+			summarizeBy: none
+
+		/// All-time share of net revenue from this product and every product that sells more. Y axis of the Pareto curve.
+		column 'Cumulative Revenue Share' =
+				VAR CurrentRevenue = 'Product'[Lifetime Revenue]
+				VAR TotalRevenue = SUMX ( FILTER ( 'Product', 'Product'[Lifetime Revenue] > 0 ), 'Product'[Lifetime Revenue] )
+				RETURN
+				    IF (
+				        CurrentRevenue > 0,
+				        DIVIDE ( SUMX ( FILTER ( 'Product', 'Product'[Lifetime Revenue] >= CurrentRevenue ), 'Product'[Lifetime Revenue] ), TotalRevenue )
+				    )
+			dataType: double
+			formatString: 0.0%
+			summarizeBy: none
